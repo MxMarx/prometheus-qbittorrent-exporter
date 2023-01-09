@@ -17,7 +17,7 @@ setup(
     keywords=['prometheus', 'qbittorrent'],
     classifiers=[],
     python_requires='>=3',
-    install_requires=['attrdict==2.0.1', 'qbittorrent-api==2022.1.27', 'prometheus_client==0.12.0 ', 'python-json-logger==2.0.2'],
+    install_requires=['qbittorrent-api', 'influx_line_protocol', 'python-json-logger'],
     entry_points={
         'console_scripts': [
             'qbittorrent-exporter=qbittorrent_exporter.exporter:main',

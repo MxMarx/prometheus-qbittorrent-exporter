@@ -3,13 +3,13 @@ import os
 import sys
 import signal
 import faulthandler
-from attrdict import AttrDict
 from qbittorrentapi import Client, TorrentStates
-from qbittorrentapi.exceptions import APIConnectionError
-from prometheus_client import start_http_server
-from prometheus_client.core import GaugeMetricFamily, CounterMetricFamily, REGISTRY
+from qbittorrentapi.exceptions import APIConnectionError, HTTP404Error
 import logging
 from pythonjsonlogger import jsonlogger
+from influx_line_protocol import Metric, MetricCollection
+from http.server import BaseHTTPRequestHandler, HTTPServer
+from functools import partial
 
 
 # Enable dumps on stderr in case of segfault
@@ -17,7 +17,7 @@ faulthandler.enable()
 logger = logging.getLogger()
 
 
-class QbittorrentMetricsCollector():
+class QbittorrentMetricsCollector(BaseHTTPRequestHandler):
     TORRENT_STATUSES = [
         "downloading",
         "uploading",
@@ -27,127 +27,106 @@ class QbittorrentMetricsCollector():
         "paused",
     ]
 
-    def __init__(self, config):
+    def __init__(self, config, *args, **kwargs):
         self.config = config
-        self.torrents = None
+        self.timestamp = time.time_ns()
         self.client = Client(
             host=config["host"],
             port=config["port"],
             username=config["username"],
             password=config["password"],
         )
+        super().__init__(*args, **kwargs)
 
-    def collect(self):
+    def do_GET(self):
         try:
-            self.torrents = self.client.torrents.info()
+            self.timestamp = time.time_ns()
+            collection = MetricCollection()
+            collection.metrics.extend(self.get_qbittorrent_status_metrics().metrics)
+            collection.metrics.extend(self.get_qbittorrent_torrent_info().metrics)
+
+            self.send_response(200)
+            self.send_header("Content-type", "text/plain;charset=utf-8")
+            self.end_headers()
+            self.wfile.write(bytes(str(collection), "utf-8"))
         except Exception as e:
-            logger.error(f"Couldn't get server info: {e}")
-            return None
+            self.send_response(404)
+            logger.exception("error!")
 
-        metrics = self.get_qbittorrent_metrics()
-
-        for metric in metrics:
-            name = metric["name"]
-            value = metric["value"]
-            help_text = metric.get("help", "")
-            labels = metric.get("labels", {})
-            metric_type = metric.get("type", "gauge")
-
-            if metric_type == "counter":
-                prom_metric = CounterMetricFamily(name, help_text, labels=labels.keys())
-            else:
-                prom_metric = GaugeMetricFamily(name, help_text, labels=labels.keys())
-            prom_metric.add_metric(value=value, labels=labels.values())
-            yield prom_metric
-
-    def get_qbittorrent_metrics(self):
-        metrics = []
-        metrics.extend(self.get_qbittorrent_status_metrics())
-        metrics.extend(self.get_qbittorrent_torrent_tags_metrics())
-
-        return metrics
 
     def get_qbittorrent_status_metrics(self):
-        response = {}
-        version = ""
-
+        collection = MetricCollection()
         # Fetch data from API
         try:
+            # response self.client.sync_maindata()
             response = self.client.transfer.info
-            version = self.client.app.version
-            self.torrents = self.client.torrents.info()
-        except APIConnectionError as e:
-            logger.error(f"Couldn't get server info: {e.error_message}")
+            # version = self.client.app.version
+
+            tags = [
+                "connection_status"
+            ]
+            values = [
+                "dht_nodes",
+                "dl_info_data",
+                "up_info_data",
+            ]
+            metric = Metric(f"{self.config['metrics_prefix']}_transfer")
+            metric.with_timestamp(self.timestamp)
+            for tag in tags:
+                metric.add_tag(tag, response[tag])
+            for value in values:
+                metric.add_value(value, response[value])
+            collection.append(metric)
+
+        except HTTP404Error:
+            logger.error("404 Error!")
+        except APIConnectionError:
+            logger.exception(f"Couldn't get server info:")
         except Exception:
-            logger.error(f"Couldn't get server info")
+            logger.exception(f"Error!")
 
-        return [
-            {
-                "name": f"{self.config['metrics_prefix']}_up",
-                "value": bool(response),
-                "labels": {"version": version},
-                "help": "Whether if server is alive or not",
-            },
-            {
-                "name": f"{self.config['metrics_prefix']}_connected",
-                "value": response.get("connection_status", "") == "connected",
-                "help": "Whether if server is connected or not",
-            },
-            {
-                "name": f"{self.config['metrics_prefix']}_firewalled",
-                "value": response.get("connection_status", "") == "firewalled",
-                "help": "Whether if server is under a firewall or not",
-            },
-            {
-                "name": f"{self.config['metrics_prefix']}_dht_nodes",
-                "value": response.get("dht_nodes", 0),
-                "help": "DHT nodes connected to",
-            },
-            {
-                "name": f"{self.config['metrics_prefix']}_dl_info_data",
-                "value": response.get("dl_info_data", 0),
-                "help": "Data downloaded this session (bytes)",
-                "type": "counter"
-            },
-            {
-                "name": f"{self.config['metrics_prefix']}_up_info_data",
-                "value": response.get("up_info_data", 0),
-                "help": "Data uploaded this session (bytes)",
-                "type": "counter"
-            },
-        ]
 
-    def get_qbittorrent_torrent_tags_metrics(self):
+        return collection
+
+    def get_qbittorrent_torrent_info(self):
+
+        collection = MetricCollection()
         try:
-            categories = self.client.torrent_categories.categories
-        except Exception as e:
-            logger.error(f"Couldn't fetch categories: {e}")
-            return []
+            torrents = self.client.torrents.info(status_filter=["resumed"],  SIMPLE_RESPONSES=True)
 
-        if not self.torrents:
-            return []
+            values = [
+                "uploaded",
+                "downloaded",
+                "dlspeed",
+                "upspeed",
+                "num_complete",
+                "num_incomplete",
+                "num_leechs",
+                "num_seeds",
+            ]
+            tags = [
+                "name",
+                "state",
+                "category",
+                "size",
+            ]
+            for t in torrents:
+                metric = Metric(f"{self.config['metrics_prefix']}_torrent")
+                metric.with_timestamp(self.timestamp)
+                for tag in tags:
+                    metric.add_tag(tag, t[tag])
+                for value in values:
+                    metric.add_value(value, t[value])
+                collection.append(metric)
 
-        metrics = []
-        categories.Uncategorized = AttrDict({'name': 'Uncategorized', 'savePath': ''})
-        for category in categories:
-            category_torrents = [t for t in self.torrents if t['category'] == category or (category == "Uncategorized" and t['category'] == "")]
+        except HTTP404Error:
+            logger.error("404 Error!")
+        except APIConnectionError:
+            logger.exception(f"Couldn't get server info:")
+        except Exception:
+            logger.exception(f"Error!")
 
-            for status in self.TORRENT_STATUSES:
-                status_prop = f"is_{status}"
-                status_torrents = [
-                    t for t in category_torrents if getattr(TorrentStates, status_prop).fget(TorrentStates(t['state']))
-                ]
-                metrics.append({
-                    "name": f"{self.config['metrics_prefix']}_torrents_count",
-                    "value": len(status_torrents),
-                    "labels": {
-                        "status": status,
-                        "category": category,
-                    },
-                    "help": f"Number of torrents in status {status} under category {category}"
-                })
-
-        return metrics
+        return collection
 
 
 class SignalHandler():
@@ -163,10 +142,11 @@ class SignalHandler():
 
     def _on_signal_received(self, signal, frame):
         if self.shutdownCount > 1:
-            logger.warn("Forcibly killing exporter")
-            sys.exit(1)
+            logger.warning("Forcibly killing exporter")
         logger.info("Exporter is shutting down")
         self.shutdownCount += 1
+        sys.exit(1)
+
 
 def get_config_value(key, default=""):
     input_path = os.environ.get("FILE__" + key, None)
@@ -193,19 +173,29 @@ def main():
 
     config = {
         "host": get_config_value("QBITTORRENT_HOST", ""),
-        "port": get_config_value("QBITTORRENT_PORT", ""),
+        "port": int(get_config_value("QBITTORRENT_PORT", "8080")),
         "username": get_config_value("QBITTORRENT_USER", ""),
         "password": get_config_value("QBITTORRENT_PASS", ""),
         "exporter_port": int(get_config_value("EXPORTER_PORT", "8000")),
         "log_level": get_config_value("EXPORTER_LOG_LEVEL", "INFO"),
         "metrics_prefix": get_config_value("METRICS_PREFIX", "qbittorrent"),
     }
+
+    config = {
+        "host":  "192.168.1.49",
+        "port": 8080,
+        "username":  "admin",
+        "password": "adminadmin",
+        "exporter_port": 8000,
+        "log_level": "INFO",
+        "metrics_prefix":  "qbittorrent",
+    }
+
     # set level once config has been loaded
     logger.setLevel(config["log_level"])
 
     # Register signal handler
     signal_handler = SignalHandler()
-
 
     if not config["host"]:
         logger.error("No host specified, please set QBITTORRENT_HOST environment variable")
@@ -216,15 +206,16 @@ def main():
 
     # Register our custom collector
     logger.info("Exporter is starting up")
-    REGISTRY.register(QbittorrentMetricsCollector(config))
 
     # Start server
-    start_http_server(config["exporter_port"])
-    logger.info(
-        f"Exporter listening on port {config['exporter_port']}"
-    )
-
-    while not signal_handler.is_shutting_down():
-        time.sleep(1)
-
+    handler = partial(QbittorrentMetricsCollector, config)
+    httpd = HTTPServer(("", config["exporter_port"]), handler)
+    logger.info(f"Exporter listening on port {config['exporter_port']}")
+    try:
+        httpd.serve_forever()
+    except (KeyboardInterrupt, SystemExit) as e:
+        pass
+    httpd.server_close()
     logger.info("Exporter has shutdown")
+
+main()

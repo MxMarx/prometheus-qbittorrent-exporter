@@ -1,18 +1,14 @@
-FROM alpine:3.11
-
-# Installing required packages
-RUN apk add --update --no-cache \
-    python3
+FROM python:3.11-bullseye
 
 # Install package
 WORKDIR /code
 COPY . .
 RUN pip3 install .
 
-ENV QBITTORRENT_HOST=""
-ENV QBITTORRENT_PORT=""
-ENV QBITTORRENT_USER=""
-ENV QBITTORRENT_PASS=""
+ENV QBITTORRENT_HOST="localhost"
+ENV QBITTORRENT_PORT="8080"
+ENV QBITTORRENT_USER="admin"
+ENV QBITTORRENT_PASS="adminadmin"
 ENV EXPORTER_PORT="8000"
 ENV EXPORTER_LOG_LEVEL="INFO"
 
