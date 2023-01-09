@@ -112,6 +112,8 @@ class QbittorrentMetricsCollector(BaseHTTPRequestHandler):
             ]
             for t in torrents:
                 metric = Metric(f"{self.config['metrics_prefix']}_torrent")
+                if not t["category"]:
+                    t["category"] = "uncategorized"
                 metric.with_timestamp(self.timestamp)
                 for tag in tags:
                     metric.add_tag(tag, t[tag])
