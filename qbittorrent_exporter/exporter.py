@@ -181,16 +181,6 @@ def main():
         "metrics_prefix": get_config_value("METRICS_PREFIX", "qbittorrent"),
     }
 
-    config = {
-        "host":  "192.168.1.49",
-        "port": 8080,
-        "username":  "admin",
-        "password": "adminadmin",
-        "exporter_port": 8000,
-        "log_level": "INFO",
-        "metrics_prefix":  "qbittorrent",
-    }
-
     # set level once config has been loaded
     logger.setLevel(config["log_level"])
 
@@ -217,5 +207,3 @@ def main():
         pass
     httpd.server_close()
     logger.info("Exporter has shutdown")
-
-main()
