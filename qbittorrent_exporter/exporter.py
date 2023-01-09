@@ -53,6 +53,9 @@ class QbittorrentMetricsCollector(BaseHTTPRequestHandler):
             self.send_response(404)
             logger.exception("error!")
 
+    # disable logging from server
+    def log_request(self, code='-', size='-'):
+        return
 
     def get_qbittorrent_status_metrics(self):
         collection = MetricCollection()
