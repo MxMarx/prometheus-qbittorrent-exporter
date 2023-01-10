@@ -56,9 +56,10 @@ class QbittorrentMetricsCollector(BaseHTTPRequestHandler):
             logger.exception(f"Couldn't get server info:")
         except Exception:
             logger.exception("error!")
-        finally:
-            self.send_response(404)
-            self.end_headers()
+        else:
+            return
+        self.send_response(404)
+        self.end_headers()
 
     # disable logging from server
     def log_request(self, code='-', size='-'):
