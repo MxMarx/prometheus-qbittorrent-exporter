@@ -49,9 +49,16 @@ class QbittorrentMetricsCollector(BaseHTTPRequestHandler):
             self.send_header("Content-type", "text/plain;charset=utf-8")
             self.end_headers()
             self.wfile.write(bytes(str(collection), "utf-8"))
-        except Exception as e:
-            self.send_response(404)
+
+        except HTTP404Error:
+            logger.error("404 Error!")
+        except APIConnectionError:
+            logger.exception(f"Couldn't get server info:")
+        except Exception:
             logger.exception("error!")
+        finally:
+            self.send_response(404)
+            self.end_headers()
 
     # disable logging from server
     def log_request(self, code='-', size='-'):
@@ -60,76 +67,61 @@ class QbittorrentMetricsCollector(BaseHTTPRequestHandler):
     def get_qbittorrent_status_metrics(self):
         collection = MetricCollection()
         # Fetch data from API
-        try:
-            # response self.client.sync_maindata()
-            response = self.client.transfer.info
-            # version = self.client.app.version
+        # response self.client.sync_maindata()
+        response = self.client.transfer.info
+        # version = self.client.app.version
 
-            tags = [
-                "connection_status"
-            ]
-            values = [
-                "dht_nodes",
-                "dl_info_data",
-                "up_info_data",
-            ]
-            metric = Metric(f"{self.config['metrics_prefix']}_transfer")
-            metric.with_timestamp(self.timestamp)
-            for tag in tags:
-                metric.add_tag(tag, response[tag])
-            for value in values:
-                metric.add_value(value, response[value])
-            collection.append(metric)
-
-        except HTTP404Error:
-            logger.error("404 Error!")
-        except APIConnectionError:
-            logger.exception(f"Couldn't get server info:")
-        except Exception:
-            logger.exception(f"Error!")
-
+        tags = [
+            "connection_status"
+        ]
+        values = [
+            "dht_nodes",
+            "dl_info_data",
+            "up_info_data",
+        ]
+        metric = Metric(f"{self.config['metrics_prefix']}_transfer")
+        metric.with_timestamp(self.timestamp)
+        for tag in tags:
+            metric.add_tag(tag, response[tag])
+        for value in values:
+            metric.add_value(value, response[value])
+        collection.append(metric)
 
         return collection
 
     def get_qbittorrent_torrent_info(self):
 
         collection = MetricCollection()
-        try:
-            torrents = self.client.torrents.info(status_filter=["resumed"],  SIMPLE_RESPONSES=True)
+        torrents = self.client.torrents.info(status_filter=["resumed"],  SIMPLE_RESPONSES=True)
 
-            values = [
-                "uploaded",
-                "downloaded",
-                "dlspeed",
-                "upspeed",
-                "num_complete",
-                "num_incomplete",
-                "num_leechs",
-                "num_seeds",
-            ]
-            tags = [
-                "name",
-                "state",
-                "category",
-                "size",
-            ]
-            for t in torrents:
-                metric = Metric(f"{self.config['metrics_prefix']}_torrent")
-                if not t["category"]:
-                    t["category"] = "uncategorized"
-                metric.with_timestamp(self.timestamp)
-                for tag in tags:
-                    metric.add_tag(tag, t[tag])
-                for value in values:
-                    metric.add_value(value, t[value])
-                collection.append(metric)
+        values = [
+            "uploaded",
+            "downloaded",
+            "dlspeed",
+            "upspeed",
+            "num_complete",
+            "num_incomplete",
+            "num_leechs",
+            "num_seeds",
+        ]
+        tags = [
+            "name",
+            "state",
+            "category",
+            "size",
+        ]
+        for t in torrents:
+            metric = Metric(f"{self.config['metrics_prefix']}_torrent")
+            if not t["category"]:
+                t["category"] = "uncategorized"
+            metric.with_timestamp(self.timestamp)
+            for tag in tags:
+                metric.add_tag(tag, t[tag])
+            for value in values:
+                metric.add_value(value, t[value])
+            collection.append(metric)
 
-        except HTTP404Error:
-            logger.error("404 Error!")
-        except APIConnectionError:
-            logger.exception(f"Couldn't get server info:")
-        except Exception:
-            logger.exception(f"Error!")
+
 
         return collection
 
