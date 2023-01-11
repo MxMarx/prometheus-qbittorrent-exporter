@@ -18,14 +18,6 @@ logger = logging.getLogger()
 
 
 class QbittorrentMetricsCollector(BaseHTTPRequestHandler):
-    TORRENT_STATUSES = [
-        "downloading",
-        "uploading",
-        "complete",
-        "checking",
-        "errored",
-        "paused",
-    ]
 
     def __init__(self, config, *args, **kwargs):
         self.config = config
@@ -66,12 +58,7 @@ class QbittorrentMetricsCollector(BaseHTTPRequestHandler):
         return
 
     def get_qbittorrent_status_metrics(self):
-        collection = MetricCollection()
-        # Fetch data from API
-        # response self.client.sync_maindata()
-        response = self.client.transfer.info
-        # version = self.client.app.version
-
+        transfer_info = self.client.transfer_info()
         tags = [
             "connection_status"
         ]
@@ -80,21 +67,18 @@ class QbittorrentMetricsCollector(BaseHTTPRequestHandler):
             "dl_info_data",
             "up_info_data",
         ]
+        collection = MetricCollection()
         metric = Metric(f"{self.config['metrics_prefix']}_transfer")
         metric.with_timestamp(self.timestamp)
         for tag in tags:
-            metric.add_tag(tag, response[tag])
+            metric.add_tag(tag, transfer_info[tag])
         for value in values:
-            metric.add_value(value, response[value])
+            metric.add_value(value, transfer_info[value])
         collection.append(metric)
-
         return collection
 
     def get_qbittorrent_torrent_info(self):
-
-        collection = MetricCollection()
-        torrents = self.client.torrents.info(status_filter=["resumed"],  SIMPLE_RESPONSES=True)
-
+        torrents = self.client.torrents.info(status_filter=["resumed"], SIMPLE_RESPONSES=True)
         values = [
             "uploaded",
             "downloaded",
@@ -107,10 +91,12 @@ class QbittorrentMetricsCollector(BaseHTTPRequestHandler):
         ]
         tags = [
             "name",
+            "hash",
             "state",
             "category",
             "size",
         ]
+        collection = MetricCollection()
         for t in torrents:
             metric = Metric(f"{self.config['metrics_prefix']}_torrent")
             if not t["category"]:
@@ -121,9 +107,6 @@ class QbittorrentMetricsCollector(BaseHTTPRequestHandler):
             for value in values:
                 metric.add_value(value, t[value])
             collection.append(metric)
-
-
-
         return collection
 
 
@@ -170,10 +153,10 @@ def main():
     logger.setLevel("INFO") # default until config is loaded
 
     config = {
-        "host": get_config_value("QBITTORRENT_HOST", ""),
+        "host": get_config_value("QBITTORRENT_HOST", "192.168.1.49"),
         "port": int(get_config_value("QBITTORRENT_PORT", "8080")),
-        "username": get_config_value("QBITTORRENT_USER", ""),
-        "password": get_config_value("QBITTORRENT_PASS", ""),
+        "username": get_config_value("QBITTORRENT_USER", "admin"),
+        "password": get_config_value("QBITTORRENT_PASS", "adminadmin"),
         "exporter_port": int(get_config_value("EXPORTER_PORT", "8000")),
         "log_level": get_config_value("EXPORTER_LOG_LEVEL", "INFO"),
         "metrics_prefix": get_config_value("METRICS_PREFIX", "qbittorrent"),
