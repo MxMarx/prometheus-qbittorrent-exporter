@@ -79,7 +79,7 @@ class QbittorrentMetricsCollector(BaseHTTPRequestHandler):
 
     def get_qbittorrent_torrent_info(self):
         torrents = self.client.torrents.info(status_filter=["resumed"], SIMPLE_RESPONSES=True)
-        values = [
+        torrent_values = [
             "uploaded",
             "downloaded",
             "dlspeed",
@@ -89,12 +89,29 @@ class QbittorrentMetricsCollector(BaseHTTPRequestHandler):
             "num_leechs",
             "num_seeds",
         ]
-        tags = [
+        torrent_tags = [
             "name",
             "hash",
+            "tracker",
             "state",
             "category",
             "size",
+            "added_on",
+        ]
+        peer_values = [
+            "dl_speed",
+            "downloaded",
+            "uploaded",
+            "up_speed",
+            "progress",
+        ]
+        peer_tags = [
+            "ip",
+            "port",
+            "flags",
+            "client",
+            "connection",
+            "country",
         ]
         collection = MetricCollection()
         for t in torrents:
@@ -102,11 +119,25 @@ class QbittorrentMetricsCollector(BaseHTTPRequestHandler):
             if not t["category"]:
                 t["category"] = "uncategorized"
             metric.with_timestamp(self.timestamp)
-            for tag in tags:
+            for tag in torrent_tags:
                 metric.add_tag(tag, t[tag])
-            for value in values:
+            for value in torrent_values:
                 metric.add_value(value, t[value])
+
             collection.append(metric)
+
+            if self.config['log_peers']:
+                if t['num_leechs']:
+                    peers = self.client.sync.torrent_peers(torrent_hash=t['hash'])
+                    for peer in peers['peers']:
+                        metric = Metric(f"{self.config['metrics_prefix']}_peers")
+                        metric.with_timestamp(self.timestamp)
+                        metric.add_tag("hash", t["hash"])
+                        for tag in peer_tags:
+                            metric.add_tag(tag, peers["peers"][peer][tag])
+                        for value in peer_values:
+                            metric.add_value(value, peers["peers"][peer][value])
+                        collection.append(metric)
         return collection
 
 
@@ -160,6 +191,7 @@ def main():
         "exporter_port": int(get_config_value("EXPORTER_PORT", "8000")),
         "log_level": get_config_value("EXPORTER_LOG_LEVEL", "INFO"),
         "metrics_prefix": get_config_value("METRICS_PREFIX", "qbittorrent"),
+        "log_peers": get_config_value("LOG_PEERS", "false").lower() == "true",
     }
 
     # set level once config has been loaded
