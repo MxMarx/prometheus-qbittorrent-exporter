@@ -118,6 +118,8 @@ class QbittorrentMetricsCollector(BaseHTTPRequestHandler):
             metric = Metric(f"{self.config['metrics_prefix']}_torrent")
             if not t["category"]:
                 t["category"] = "uncategorized"
+            if not t["tracker"]:
+                t["tracker"] = "none"
             metric.with_timestamp(self.timestamp)
             for tag in torrent_tags:
                 metric.add_tag(tag, t[tag])
@@ -130,6 +132,10 @@ class QbittorrentMetricsCollector(BaseHTTPRequestHandler):
                 if t['num_leechs']:
                     peers = self.client.sync.torrent_peers(torrent_hash=t['hash'])
                     for peer in peers['peers']:
+                        if not peers["peers"][peer]["client"]:
+                            peers["peers"][peer]["client"] = "none"
+                        if not peers["peers"][peer]["flags"]:
+                            peers["peers"][peer]["flags"] = "none"
                         metric = Metric(f"{self.config['metrics_prefix']}_peers")
                         metric.with_timestamp(self.timestamp)
                         metric.add_tag("hash", t["hash"])
@@ -191,7 +197,7 @@ def main():
         "exporter_port": int(get_config_value("EXPORTER_PORT", "8000")),
         "log_level": get_config_value("EXPORTER_LOG_LEVEL", "INFO"),
         "metrics_prefix": get_config_value("METRICS_PREFIX", "qbittorrent"),
-        "log_peers": get_config_value("LOG_PEERS", "false").lower() == "true",
+        "log_peers": get_config_value("LOG_PEERS", "true").lower() == "true",
     }
 
     # set level once config has been loaded
