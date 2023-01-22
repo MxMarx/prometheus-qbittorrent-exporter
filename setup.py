@@ -4,17 +4,17 @@ with open("README.md", "r") as fh:
     long_description = fh.read()
 
 setup(
-    name='prometheus-qbittorrent-exporter',
+    name='telegraf-qbittorrent-exporter',
     packages=['qbittorrent_exporter'],
     version='1.2.0',
     long_description=long_description,
     long_description_content_type="text/markdown",
     description='Prometheus exporter for qbittorrent',
-    author='Esteban Sanchez',
+    author='Esteban Sanchez, Ruby Marx',
     author_email='esteban.sanchez@gmail.com',
     url='https://github.com/esanchezm/prometheus-qbittorrent-exporter',
     download_url='https://github.com/esanchezm/prometheus-qbittorrent-exporter/archive/1.1.0.tar.gz',
-    keywords=['prometheus', 'qbittorrent'],
+    keywords=['telegraf', 'qbittorrent'],
     classifiers=[],
     python_requires='>=3',
     install_requires=['qbittorrent-api', 'influx_line_protocol', 'python-json-logger'],
