@@ -92,7 +92,6 @@ class QbittorrentMetricsCollector(BaseHTTPRequestHandler):
         torrent_tags = [
             "name",
             "hash",
-            "tracker",
             "state",
             "category",
             "size",
