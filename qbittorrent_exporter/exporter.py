@@ -38,9 +38,9 @@ class QbittorrentMetricsCollector(BaseHTTPRequestHandler):
             collection.metrics.extend(self.get_qbittorrent_torrent_info().metrics)
 
             self.send_response(200)
-            self.send_header("Content-type", "text/plain;charset=utf-8")
+            self.send_header("Content-type", "text/plain;charset=utf-16")
             self.end_headers()
-            self.wfile.write(bytes(str(collection), "utf-8"))
+            self.wfile.write(bytes(str(collection), "utf-16"))
 
         except HTTP404Error:
             logger.error("404 Error!")
@@ -103,10 +103,10 @@ class QbittorrentMetricsCollector(BaseHTTPRequestHandler):
             "uploaded",
             "up_speed",
             "progress",
+            "port",
         ]
         peer_tags = [
             "ip",
-            "port",
             "flags",
             "client",
             "connection",
@@ -131,10 +131,17 @@ class QbittorrentMetricsCollector(BaseHTTPRequestHandler):
                 if t['num_leechs']:
                     peers = self.client.sync.torrent_peers(torrent_hash=t['hash'])
                     for peer in peers['peers']:
+
+                        # Skip peers where no downloads or uploads
+                        if not self.config['log_peers_inactive']:
+                            if not (peers["peers"][peer]["downloaded"] or peers["peers"][peer]["uploaded"]):
+                                continue
+
                         if not peers["peers"][peer]["client"]:
                             peers["peers"][peer]["client"] = "none"
                         if not peers["peers"][peer]["flags"]:
                             peers["peers"][peer]["flags"] = "none"
+                            continue
                         metric = Metric(f"{self.config['metrics_prefix']}_peers")
                         metric.with_timestamp(self.timestamp)
                         metric.add_tag("hash", t["hash"])
@@ -197,6 +204,7 @@ def main():
         "log_level": get_config_value("EXPORTER_LOG_LEVEL", "INFO"),
         "metrics_prefix": get_config_value("METRICS_PREFIX", "qbittorrent"),
         "log_peers": get_config_value("LOG_PEERS", "true").lower() == "true",
+        "log_peers_inactive": get_config_value("LOG_PEERS_INACTIVE", "true").lower() == "true",
     }
 
     # set level once config has been loaded
