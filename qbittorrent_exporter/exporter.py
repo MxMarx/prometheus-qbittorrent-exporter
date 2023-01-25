@@ -38,9 +38,9 @@ class QbittorrentMetricsCollector(BaseHTTPRequestHandler):
             collection.metrics.extend(self.get_qbittorrent_torrent_info().metrics)
 
             self.send_response(200)
-            self.send_header("Content-type", "text/plain;charset=utf-16")
+            self.send_header("Content-type", "text/plain;charset=utf-8")
             self.end_headers()
-            self.wfile.write(bytes(str(collection), "utf-16"))
+            self.wfile.write(str(collection).encode("utf-8", "replace"))
 
         except HTTP404Error:
             logger.error("404 Error!")
@@ -140,8 +140,9 @@ class QbittorrentMetricsCollector(BaseHTTPRequestHandler):
                         if not peers["peers"][peer]["client"]:
                             peers["peers"][peer]["client"] = "none"
                         if not peers["peers"][peer]["flags"]:
-                            peers["peers"][peer]["flags"] = "none"
+                            # peers["peers"][peer]["flags"] = "none"
                             continue
+
                         metric = Metric(f"{self.config['metrics_prefix']}_peers")
                         metric.with_timestamp(self.timestamp)
                         metric.add_tag("hash", t["hash"])
