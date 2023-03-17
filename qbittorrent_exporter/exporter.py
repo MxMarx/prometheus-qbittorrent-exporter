@@ -96,6 +96,7 @@ class QbittorrentMetricsCollector(BaseHTTPRequestHandler):
             "category",
             "size",
             "added_on",
+            "tags",
         ]
         peer_values = [
             "dl_speed",
@@ -117,8 +118,8 @@ class QbittorrentMetricsCollector(BaseHTTPRequestHandler):
             metric = Metric(f"{self.config['metrics_prefix']}_torrent")
             if not t["category"]:
                 t["category"] = "uncategorized"
-            if not t["tracker"]:
-                t["tracker"] = "none"
+            if not t["tags"]:
+                t["tags"] = "none"
             metric.with_timestamp(self.timestamp)
             for tag in torrent_tags:
                 metric.add_tag(tag, t[tag])
