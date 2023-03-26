@@ -34,8 +34,11 @@ class QbittorrentMetricsCollector(BaseHTTPRequestHandler):
         try:
             self.timestamp = time.time_ns()
             collection = MetricCollection()
-            collection.metrics.extend(self.get_qbittorrent_status_metrics().metrics)
-            collection.metrics.extend(self.get_qbittorrent_torrent_info().metrics)
+            if self.path == '/active':
+                collection.metrics.extend(self.get_qbittorrent_torrent_info(["active"]).metrics)
+            elif self.path == '/inactive':
+                collection.metrics.extend(self.get_qbittorrent_torrent_info(["inactive"]).metrics)
+                collection.metrics.extend(self.get_qbittorrent_status_metrics().metrics)
 
             self.send_response(200)
             self.send_header("Content-type", "text/plain;charset=utf-8")
@@ -77,8 +80,8 @@ class QbittorrentMetricsCollector(BaseHTTPRequestHandler):
         collection.append(metric)
         return collection
 
-    def get_qbittorrent_torrent_info(self):
-        torrents = self.client.torrents.info(status_filter=["resumed"], SIMPLE_RESPONSES=True)
+    def get_qbittorrent_torrent_info(self, states):
+        torrents = self.client.torrents.info(status_filter=states, SIMPLE_RESPONSES=True)
         torrent_values = [
             "uploaded",
             "downloaded",
