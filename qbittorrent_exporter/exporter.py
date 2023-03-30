@@ -37,7 +37,7 @@ class QbittorrentMetricsCollector(BaseHTTPRequestHandler):
             if self.path == '/active':
                 collection.metrics.extend(self.get_qbittorrent_torrent_info(["active"]).metrics)
             elif self.path == '/inactive':
-                collection.metrics.extend(self.get_qbittorrent_torrent_info(["inactive"]).metrics)
+                collection.metrics.extend(self.get_qbittorrent_torrent_info(["stalled"]).metrics)
                 collection.metrics.extend(self.get_qbittorrent_status_metrics().metrics)
 
             self.send_response(200)
