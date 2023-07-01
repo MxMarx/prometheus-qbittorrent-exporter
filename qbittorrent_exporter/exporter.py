@@ -10,7 +10,7 @@ from pythonjsonlogger import jsonlogger
 from influx_line_protocol import Metric, MetricCollection
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from functools import partial
-
+import re
 
 # Enable dumps on stderr in case of segfault
 faulthandler.enable()
@@ -36,9 +36,10 @@ class QbittorrentMetricsCollector(BaseHTTPRequestHandler):
             collection = MetricCollection()
             if self.path == '/active':
                 collection.metrics.extend(self.get_qbittorrent_torrent_info(["active"]).metrics)
+                collection.metrics.extend(self.get_qbittorrent_status_maindata().metrics)
+
             elif self.path == '/inactive':
                 collection.metrics.extend(self.get_qbittorrent_torrent_info(["stalled"]).metrics)
-                collection.metrics.extend(self.get_qbittorrent_status_metrics().metrics)
 
             self.send_response(200)
             self.send_header("Content-type", "text/plain;charset=utf-8")
@@ -59,6 +60,39 @@ class QbittorrentMetricsCollector(BaseHTTPRequestHandler):
     # disable logging from server
     def log_request(self, code='-', size='-'):
         return
+
+    def get_qbittorrent_status_maindata(self):
+        sync_maindata = self.client.sync_maindata()
+        tags = [
+            "connection_status"
+        ]
+        values = [
+            "alltime_dl",
+            "alltime_ul",
+            "average_time_queue",
+            "dht_nodes",
+            "dl_info_data",
+            "dl_info_speed",
+            "up_info_data",
+            "up_info_speed",
+            "queued_io_jobs",
+            "read_cache_hits",
+            "read_cache_overload",
+            "write_cache_overload",
+            "total_buffers_size",
+            "total_peer_connections",
+            "total_queued_size",
+            "total_wasted_session",
+        ]
+        collection = MetricCollection()
+        metric = Metric(f"{self.config['metrics_prefix']}_transfer")
+        metric.with_timestamp(self.timestamp)
+        for tag in tags:
+            metric.add_tag(tag, sync_maindata['server_state'][tag])
+        for value in values:
+            metric.add_value(value, sync_maindata['server_state'][value])
+        collection.append(metric)
+        return collection
 
     def get_qbittorrent_status_metrics(self):
         transfer_info = self.client.transfer_info()
@@ -146,6 +180,7 @@ class QbittorrentMetricsCollector(BaseHTTPRequestHandler):
                         if not peers["peers"][peer]["flags"]:
                             # peers["peers"][peer]["flags"] = "none"
                             continue
+                        peers["peers"][peer]["client"] = (peers["peers"][peer]["client"]).replace('\\','\\\\')
 
                         metric = Metric(f"{self.config['metrics_prefix']}_peers")
                         metric.with_timestamp(self.timestamp)
